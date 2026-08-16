@@ -1,0 +1,9 @@
+idf.py fullclean — Clears all build artifacts, generated headers, and component configurations to force a completely fresh build.
+
+idf.py build — Compiles the project source code and generates the binary firmware image.
+
+idf.py flash — Uploads the compiled binary firmware over serial to the connected microcontroller.
+
+idf.py monitor — Opens the serial terminal monitor to view console logs and print statements from the running chip.
+
+idf.py build flash monitor — Chains the build, flash, and monitor steps together sequentially into a single command.
