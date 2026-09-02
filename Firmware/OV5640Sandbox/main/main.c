@@ -82,6 +82,8 @@ void app_main(void)
     if (init_camera() != ESP_OK) {
         return;
     }
+    
+   
 
     while (1) {
         // Capture a frame
@@ -89,8 +91,15 @@ void app_main(void)
         if (!pic) {
             ESP_LOGE(TAG, "Camera capture failed");
         } else {
-            ESP_LOGI(TAG, "Picture captured! Size: %zu bytes", pic->len);
+            //ESP_LOGI(TAG, "Number of bytes: ", pic->len);
             // Return the frame buffer back to the driver pool
+            char* magic = "alex";
+            fwrite(magic,4,1,stdout);
+            fwrite(&(pic->len),sizeof(size_t),1, stdout);
+            //fwrite(pic->buf,1, pic->len, stdout);
+            
+			fflush(stdout);	
+            
             esp_camera_fb_return(pic);
         }
 
