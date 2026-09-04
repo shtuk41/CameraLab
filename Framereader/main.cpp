@@ -11,8 +11,11 @@
 #include <stdexcept>
 #include <string>
 
+#define DEF_HELP
+#define SAVE_IMAGE
+
 const size_t imageSize = 153600;
-const size_t dataframeSize = imageSize + 8;
+char frameBuffer[imageSize];
 const char* deviceName = "/dev/ttyUSB0";
 int deviceFile = -1;
 struct termios original_termios, previous_termios;
@@ -31,38 +34,45 @@ enum class States
 	WAIT_FRAMEBUFFER = 4
 };
 
-//Richard Stevens "Advanced Programming in the UNIX Environment" 1st Edition, page 355
+//inspierd by Richard Stevens "Advanced Programming in the UNIX Environment" 1st Edition, page 355
 int tty_raw(int fd, int min, int time, struct termios &save_termios)
 {
-	struct termios buf;
-	
-	if (tcgetattr(fd, &save_termios) < 0)
-		return -1;
-	
-	buf = save_termios;
-	
-	//echo off, canonical mode off, extended input processing off, signal chars off
-	buf.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    struct termios buf;
 
-	//no SIGINT on BREAK, CR-to-NL off, input parity check off, don't strip 8th bit on input, output flow control off
-	buf.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-	
-	//clear size bits, parity checking off
-	buf.c_cflag &= ~(CSIZE | PARENB);
+    if (tcgetattr(fd, &save_termios) < 0)
+        return -1;
 
-	//set 8 bits/char
-	buf.c_cflag |= CS8;
-	
-	//output processing off
-	buf.c_oflag &= ~(OPOST);
-	
-	buf.c_cc[VMIN] = min;
-	buf.c_cc[VTIME] = time;
-	
-	if (tcsetattr(fd, TCSAFLUSH, &buf) < 0)
-		return -1;
-	
-	return 0;
+    buf = save_termios;
+
+    // 115200 baud
+    if (cfsetispeed(&buf, B115200) < 0)
+        return -1;
+
+    if (cfsetospeed(&buf, B115200) < 0)
+        return -1;
+
+    // 8 data bits, no parity, 1 stop bit, no hardware flow control
+    buf.c_cflag &= ~(CSIZE | PARENB | CSTOPB | CRTSCTS);
+    buf.c_cflag |= CS8;
+
+    // Raw input
+    buf.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP |
+                     IXON | IXOFF);
+
+    // Raw output
+    buf.c_oflag &= ~(OPOST);
+
+    // Raw local mode
+    buf.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+
+    // Read behavior
+    buf.c_cc[VMIN]  = min;
+    buf.c_cc[VTIME] = time;
+
+    if (tcsetattr(fd, TCSANOW, &buf) < 0)
+        return -1;
+
+    return 0;
 }
 
 int tty_reset(int fd, struct termios &save_termios)
@@ -90,12 +100,51 @@ static void sig_catch(int signo)
 	exit(0);
 }
 
+int SaveImageToDisk(const char* buffer, size_t size)
+{
+	static int imageNumber = 0;
+
+	std::string filename = "imageRGB565_" + std::to_string(imageNumber++) + ".jpeg";
+
+	int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0)
+	{
+		std::cerr << "unable to open file for writing: " << filename << std::endl;
+		return -1;
+	}
+
+	ssize_t bytesWritten = write(fd, buffer, size);
+	if (bytesWritten < 0)
+	{
+		std::cerr << "error writing to file: " << filename << std::endl;
+		close(fd);
+		return -1;
+	}
+	else if (static_cast<size_t>(bytesWritten) != size)
+	{
+		std::cerr << "incomplete write to file: " << filename << std::endl;
+		close(fd);
+		return -1;
+	}
+
+	close(fd);
+	std::cout << "image saved to disk as: " << filename << std::endl;
+	return 0;
+}
+
 int main()
 {
+#ifdef DEF_HELP
+	std::cout << "DEF_HELP is defined." << std::endl;	
+#endif 	
+
 	States state = States::WAIT_MAGIC1;
 	States prevState = States::WAIT_MAGIC1;
 	char frameSize[4];
-	char frameBuffer[imageSize];
+	size_t totalBytes = 0;
+	int numberReads = 0;
+	int frameSizeInt;
+
 
 	if (signal(SIGINT, sig_catch) == SIG_ERR)
 	{
@@ -117,6 +166,8 @@ int main()
 	{
 		if((deviceFile = open(deviceName, O_RDONLY, O_NOCTTY)) < 0)
 			throw std::runtime_error("unable to open device file. Exiting...");
+
+
 		
 		int isAtty  = isatty(deviceFile);
 		
@@ -134,53 +185,73 @@ int main()
 			original_termios_defined = true;
 		}
 
+		char c;
+
+#ifdef DEF_HELP
+		std::cout << "Entering main loop..." << std::endl;
+#endif
+
 		while (true)
 		{
 			switch(state)
 			{
 				case States::WAIT_MAGIC1:
+
+
+#ifdef DEF_HELP_
+		std::cout << "Line number: " << __LINE__ << " - States::WAIT_MAGIC1" << std::endl;
+#endif				
 					
-					char c;
 					read(deviceFile, &c, 1);
+
+#ifdef DEF_HELP_
+    std::cout << "Line number: " << __LINE__
+              << " - read byte: 0x"
+              << std::hex << (static_cast<unsigned int>(
+                     static_cast<unsigned char>(c)))
+              << std::dec << std::endl;
+#endif
 
 					if (c == 'n')
 					{
 						prevState = state;
-						state == States::WAIT_MAGIC2;
+						state = States::WAIT_MAGIC2;
 					}
 
 					break;
 				case States::WAIT_MAGIC2:
-					
-					char c;
+#ifdef DEF_HELP
+		std::cout << "Line number: " << __LINE__ << " - States::WAIT_MAGIC2" << std::endl;
+#endif						
 					read(deviceFile, &c, 1);
 
 					if (c == 'a')
 					{
 						prevState = state;
-						state == States::WAIT_MAGIC3;
+						state = States::WAIT_MAGIC3;
 					}
 					else if (c == 'n')
 					{
 						prevState = state;
-						state == States::WAIT_MAGIC2;
+						state = States::WAIT_MAGIC2;
 					}
 					else
 					{
 						prevState = state;
-						state == States::WAIT_MAGIC1;
+						state = States::WAIT_MAGIC1;
 					}
 
 					break;
 				case States::WAIT_MAGIC3:
-					
-					char c;
+#ifdef DEF_HELP
+		std::cout << "Line number: " << __LINE__ << " - States::WAIT_MAGIC3" << std::endl;
+#endif						
 					read(deviceFile, &c, 1);
 
 					if (c == 'd')
 					{
 						prevState = state;
-						state == States::WAIT_FRAME_SIZE;
+						state = States::WAIT_FRAME_SIZE;
 						if (tty_raw(deviceFile, 4, 0, previous_termios) < 0)
 							throw std::runtime_error("unable to set terminal to raw mode.  Exiting...");
 
@@ -188,47 +259,70 @@ int main()
 					else if (c == 'n')
 					{
 						prevState = state;
-						state == States::WAIT_MAGIC2;
+						state = States::WAIT_MAGIC2;
 					}
 					else if (c == 'a')
 					{
 						prevState = state;
-						state == States::WAIT_MAGIC3;
+						state = States::WAIT_MAGIC3;
 					}
 					else
 					{
 						prevState = state;
-						state == States::WAIT_MAGIC1;
+						state = States::WAIT_MAGIC1;
 					}
 
 					break;
 				case States::WAIT_FRAME_SIZE:
-					
+
+#ifdef DEF_HELP
+					std::cout << "Line number: " << __LINE__ << " - States::WAIT_FRAME_SIZE" << std::endl;
+#endif	
 					if (read(deviceFile, frameSize, 4) != 4)
 						throw std::runtime_error("unable to read frame size.  Exiting...");
 				
-					int frameSizeInt;
+
 					memcpy(&frameSizeInt, frameSize, 4);
 
 					std::cout << "frame size: " << frameSizeInt << std::endl;
 
-					if (frameSizeInt != imageSize)
-						throw std::runtime_error("frame size is not equal to expected image size.  Exiting...");
+					//if (frameSizeInt != imageSize)
+					//	throw std::runtime_error("frame size is not equal to expected image size.  Exiting...");
 					
 					prevState = state;
-					state == States::WAIT_FRAMEBUFFER;
-
-					if (tty_raw(deviceFile, frameSizeInt, 0, previous_termios) < 0)
-							throw std::runtime_error("unable to set terminal to raw mode.  Exiting...");	
-
 					state = States::WAIT_FRAMEBUFFER;
+
 					break;
 				case States::WAIT_FRAMEBUFFER:
-					
-					if (read(deviceFile, frameBuffer, imageSize) != imageSize)
-						throw std::runtime_error("unable to read frame buffer.  Exiting...");	
+#ifdef DEF_HELP
+					std::cout << "Line number: " << __LINE__ << " - States::WAIT_FRAMEBUFFER" << std::endl;
+#endif
+					totalBytes = 0;
+					numberReads = 0;
+					while (totalBytes < frameSizeInt)
+					{
+						ssize_t bytesRead = read(deviceFile, frameBuffer + totalBytes, imageSize - totalBytes);
+						if (bytesRead < 0)
+							throw std::runtime_error("error reading frame buffer.  Exiting...");
+						
+#ifdef DEF_HELP_
+					std::cout << "Line number: " << __LINE__ << " framebuffer bytes read: " << bytesRead << '\n';
+#endif
+						numberReads++;	
+						totalBytes += bytesRead;
+					}
+
+#ifdef DEF_HELP
+					std::cout << "Line number: " << __LINE__ << " framebuffer bytes read: " << totalBytes << std::endl;
+					std::cout << "Line number: " << __LINE__ << " number of reads: " << numberReads << std::endl;
+#endif
 
 					std::cout << "frame buffer read successfully." << std::endl;
+
+#ifdef SAVE_IMAGE
+					if (SaveImageToDisk(frameBuffer, imageSize) < 0)
+						throw std::runtime_error("unable to save image to disk.  Exiting...");
+#endif 					
 
 					state = States::WAIT_MAGIC1;
 					break;
@@ -245,4 +339,3 @@ int main()
 	atexit(tty_atexit);
 	return 0;
 }
-

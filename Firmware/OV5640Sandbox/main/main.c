@@ -13,14 +13,23 @@ static const char *TAG = "camera_example";
 #define CAM_PIN_SIOD    5
 #define CAM_PIN_SIOC    4
 
-#define CAM_PIN_D7      17
-#define CAM_PIN_D6      9
-#define CAM_PIN_D5      10
-#define CAM_PIN_D4      8
-#define CAM_PIN_D3      18
-#define CAM_PIN_D2      12
-#define CAM_PIN_D1      11
-#define CAM_PIN_D0      16
+//#define CAM_PIN_D7      17
+//#define CAM_PIN_D6      9
+//#define CAM_PIN_D5      10
+//#define CAM_PIN_D4      8
+//#define CAM_PIN_D3      18
+//#define CAM_PIN_D2      12
+//#define CAM_PIN_D1      11
+//#define CAM_PIN_D0      16
+
+#define CAM_PIN_D0      12   // Adafruit D2
+#define CAM_PIN_D1      18   // Adafruit D3
+#define CAM_PIN_D2       8   // Adafruit D4
+#define CAM_PIN_D3      10   // Adafruit D5
+#define CAM_PIN_D4       9   // Adafruit D6
+#define CAM_PIN_D5      17   // Adafruit D7
+#define CAM_PIN_D6      11   // Adafruit D8
+#define CAM_PIN_D7      16   // Adafruit D9
 
 #define CAM_PIN_VSYNC   6
 #define CAM_PIN_HREF    7
@@ -49,8 +58,11 @@ static camera_config_t camera_config = {
     .xclk_freq_hz = 20000000,
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
-    .pixel_format = PIXFORMAT_RGB565,
+    //.pixel_format = PIXFORMAT_RGB565,
+    .pixel_format = PIXFORMAT_JPEG,
+    //.frame_size = FRAMESIZE_QQVGA,
     .frame_size = FRAMESIZE_QVGA,
+    .jpeg_quality = 10,
     .fb_count = 2,
     .fb_location = CAMERA_FB_IN_PSRAM,
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY
@@ -83,26 +95,41 @@ void app_main(void)
         return;
     }
     
-   
+   //uint8_t magic[] = {'n', 'a', 'd'};
 
     while (1) {
         // Capture a frame
         camera_fb_t *pic = esp_camera_fb_get();
         if (!pic) {
-            ESP_LOGE(TAG, "Camera capture failed");
+            //ESP_LOGE(TAG, "Camera capture failed");
         } else {
-            //ESP_LOGI(TAG, "Number of bytes: ", pic->len);
+            //ESP_LOGI(TAG, "Number of bytes: %u", (unsigned)pic->len);
             // Return the frame buffer back to the driver pool
-            char* magic = "alex";
-            fwrite(magic,4,1,stdout);
-            fwrite(&(pic->len),sizeof(size_t),1, stdout);
-            //fwrite(pic->buf,1, pic->len, stdout);
+
+            uint32_t len = pic->len;
+			if (fwrite("nad", 1, 3, stdout) != 3)
+				ESP_LOGE(TAG, "Failed to write magic");
+
+			if (fwrite(&len, 1, sizeof(len), stdout) != sizeof(len))
+				ESP_LOGE(TAG, "Failed to write length");
+				
+			//ESP_LOGI(TAG, "format=%d width=%d height=%d len=%d",
+			//	pic->format, pic->width, pic->height, pic->len);	
+			
+			//ESP_LOGI(TAG, "Started writing image");
+			
+			if (fwrite(pic->buf, 1, len, stdout) != len)
+				ESP_LOGE(TAG, "Failed to write image");
+				
+			//ESP_LOGI(TAG, "End writing image");
+
+fflush(stdout);
             
 			fflush(stdout);	
             
             esp_camera_fb_return(pic);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
