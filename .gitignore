@@ -33,3 +33,8 @@ packages/
 
 *-backups/
 *managed_components/
+
+.*
+**/build/*
+*.o
+*.lock

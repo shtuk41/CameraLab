@@ -28,10 +28,12 @@ enum class States
 	WAIT_MAGIC2 = 1,
 	
 	WAIT_MAGIC3 = 2,
+
+	WAIT_MAGIC4 = 3,
 	
-	WAIT_FRAME_SIZE = 3,
+	WAIT_FRAME_SIZE = 4,
 	
-	WAIT_FRAMEBUFFER = 4
+	WAIT_FRAMEBUFFER = 5
 };
 
 //inspierd by Richard Stevens "Advanced Programming in the UNIX Environment" 1st Edition, page 355
@@ -100,11 +102,33 @@ static void sig_catch(int signo)
 	exit(0);
 }
 
-int SaveImageToDisk(const char* buffer, size_t size)
+enum class ImageFormat
+{
+	RAW = 0,
+	JPEG = 1
+};
+
+int SaveImageToDisk(const char* buffer, size_t size, const ImageFormat extension = ImageFormat::RAW)
 {
 	static int imageNumber = 0;
 
-	std::string filename = "imageRGB565_" + std::to_string(imageNumber++) + ".jpeg";
+	std::string extensionStr;
+
+	switch (extension)
+	{
+		case ImageFormat::RAW:
+			extensionStr = ".raw";
+			break;
+		case ImageFormat::JPEG:
+			extensionStr = ".jpeg";	
+			break;
+		default:
+			std::cerr << "invalid image format specified.  Exiting..." << std::endl;
+			throw std::runtime_error("invalid image format specified.  Exiting...");
+			return -1;
+	}
+
+	std::string filename = "imageRGB565_" + std::to_string(imageNumber++) + extensionStr;
 
 	int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (fd < 0)
@@ -132,8 +156,22 @@ int SaveImageToDisk(const char* buffer, size_t size)
 	return 0;
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+
+	if (argc > 1)
+	{
+		if (!strcmp(argv[1], "/dev/ttyUSB0") || !strcmp(argv[1], "/dev/ttyUSB1") || !strcmp(argv[1], "/dev/ttyACM0"))
+		{
+			deviceName = argv[1];
+		}
+		else
+		{
+			std::cerr << "invalid device name specified.  Exiting..." << std::endl;
+			return -1;	
+		}
+	}
+
 #ifdef DEF_HELP
 	std::cout << "DEF_HELP is defined." << std::endl;	
 #endif 	
@@ -212,7 +250,7 @@ int main()
               << std::dec << std::endl;
 #endif
 
-					if (c == 'n')
+					if (c == 's')
 					{
 						prevState = state;
 						state = States::WAIT_MAGIC2;
@@ -225,17 +263,12 @@ int main()
 #endif						
 					read(deviceFile, &c, 1);
 
-					if (c == 'a')
+					if (c == 't')
 					{
 						prevState = state;
 						state = States::WAIT_MAGIC3;
 					}
-					else if (c == 'n')
-					{
-						prevState = state;
-						state = States::WAIT_MAGIC2;
-					}
-					else
+					else  
 					{
 						prevState = state;
 						state = States::WAIT_MAGIC1;
@@ -248,23 +281,10 @@ int main()
 #endif						
 					read(deviceFile, &c, 1);
 
-					if (c == 'd')
+					if (c == 'a')
 					{
 						prevState = state;
-						state = States::WAIT_FRAME_SIZE;
-						if (tty_raw(deviceFile, 4, 0, previous_termios) < 0)
-							throw std::runtime_error("unable to set terminal to raw mode.  Exiting...");
-
-					}
-					else if (c == 'n')
-					{
-						prevState = state;
-						state = States::WAIT_MAGIC2;
-					}
-					else if (c == 'a')
-					{
-						prevState = state;
-						state = States::WAIT_MAGIC3;
+						state = States::WAIT_MAGIC4;
 					}
 					else
 					{
@@ -273,6 +293,24 @@ int main()
 					}
 
 					break;
+				case States::WAIT_MAGIC4:
+#ifdef DEF_HELP
+		std::cout << "Line number: " << __LINE__ << " - States::WAIT_MAGIC4" << std::endl;
+#endif						
+					read(deviceFile, &c, 1);
+
+					if (c == 'r')
+					{
+						prevState = state;
+						state = States::WAIT_FRAME_SIZE;
+					}
+					else
+					{
+						prevState = state;
+						state = States::WAIT_MAGIC1;
+					}
+
+					break;	
 				case States::WAIT_FRAME_SIZE:
 
 #ifdef DEF_HELP
@@ -299,7 +337,7 @@ int main()
 #endif
 					totalBytes = 0;
 					numberReads = 0;
-					while (totalBytes < frameSizeInt)
+					while (totalBytes < size_t(frameSizeInt))
 					{
 						ssize_t bytesRead = read(deviceFile, frameBuffer + totalBytes, imageSize - totalBytes);
 						if (bytesRead < 0)
@@ -320,7 +358,7 @@ int main()
 					std::cout << "frame buffer read successfully." << std::endl;
 
 #ifdef SAVE_IMAGE
-					if (SaveImageToDisk(frameBuffer, imageSize) < 0)
+					if (SaveImageToDisk(frameBuffer, imageSize, ImageFormat::RAW) < 0)
 						throw std::runtime_error("unable to save image to disk.  Exiting...");
 #endif 					
 
