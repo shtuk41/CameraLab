@@ -14,7 +14,7 @@
 #define DEF_HELP
 #define SAVE_IMAGE
 
-const size_t imageSize = 153600;
+const size_t imageSize = 614400; // 640x480 RGB565
 char frameBuffer[imageSize];
 const char* deviceName = "/dev/ttyUSB0";
 int deviceFile = -1;
@@ -47,10 +47,10 @@ int tty_raw(int fd, int min, int time, struct termios &save_termios)
     buf = save_termios;
 
     // 115200 baud
-    if (cfsetispeed(&buf, B115200) < 0)
+    if (cfsetispeed(&buf, B2000000) < 0)
         return -1;
 
-    if (cfsetospeed(&buf, B115200) < 0)
+    if (cfsetospeed(&buf, B2000000) < 0)
         return -1;
 
     // 8 data bits, no parity, 1 stop bit, no hardware flow control

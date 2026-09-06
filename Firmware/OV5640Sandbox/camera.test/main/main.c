@@ -3,6 +3,7 @@
 #include "esp_camera.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
+#include "driver/uart.h"
 
 static const char *TAG = "camera_example";
 
@@ -58,11 +59,14 @@ static camera_config_t camera_config = {
     .xclk_freq_hz = 20000000,
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
-    //.pixel_format = PIXFORMAT_RGB565,
-    .pixel_format = PIXFORMAT_JPEG,
+    .pixel_format = PIXFORMAT_RGB565,
+    //.pixel_format = PIXFORMAT_JPEG,
     //.frame_size = FRAMESIZE_QQVGA,
-    .frame_size = FRAMESIZE_QVGA,
-    .jpeg_quality = 10,
+    //.frame_size = FRAMESIZE_QVGA,
+    .frame_size = FRAMESIZE_VGA,
+    //.frame_size = FRAMESIZE_XGA,
+    //.frame_size = FRAMESIZE_UXGA,
+    .jpeg_quality = 4,
     .fb_count = 2,
     .fb_location = CAMERA_FB_IN_PSRAM,
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY
@@ -82,6 +86,22 @@ esp_err_t init_camera(void)
 
 void app_main(void)
 {
+// Configure UART0 parameters
+    const uart_config_t uart_config = {
+        //.baud_rate = 115200,
+        //.baud_rate = 921600,
+        .baud_rate = 2000000,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    };
+
+    // Install driver and apply config (256-byte RX buffer, no TX ring buffer needed for direct writes)
+    uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
+    uart_param_config(UART_NUM_0, &uart_config);
+
+
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -106,27 +126,16 @@ void app_main(void)
             //ESP_LOGI(TAG, "Number of bytes: %u", (unsigned)pic->len);
             // Return the frame buffer back to the driver pool
 
-            uint32_t len = pic->len;
-			if (fwrite("nad", 1, 3, stdout) != 3)
-				ESP_LOGE(TAG, "Failed to write magic");
+            
+			uart_write_bytes(UART_NUM_0, "star", 4);
 
-			if (fwrite(&len, 1, sizeof(len), stdout) != sizeof(len))
-				ESP_LOGE(TAG, "Failed to write length");
+            uint32_t len = pic->len;    
+			uart_write_bytes(UART_NUM_0, (const char*)&len, sizeof(len));
 				
-			//ESP_LOGI(TAG, "format=%d width=%d height=%d len=%d",
-			//	pic->format, pic->width, pic->height, pic->len);	
-			
-			//ESP_LOGI(TAG, "Started writing image");
-			
-			if (fwrite(pic->buf, 1, len, stdout) != len)
-				ESP_LOGE(TAG, "Failed to write image");
+    		uart_write_bytes(UART_NUM_0, (const char*)pic->buf, len);
 				
 			//ESP_LOGI(TAG, "End writing image");
 
-fflush(stdout);
-            
-			fflush(stdout);	
-            
             esp_camera_fb_return(pic);
         }
 
